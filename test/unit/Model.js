@@ -1077,6 +1077,56 @@ describe("Model", () => {
 					});
 				});
 
+				it("Should send consistent (false) to getItem", async () => {
+					getItemFunction = () => Promise.resolve({"Item": {"id": {"N": "1"}, "name": {"S": "Charlie"}}});
+					await callType.func(User).bind(User)(1, {"consistent": false});
+					expect(getItemParams).to.be.an("object");
+					expect(getItemParams).to.eql({
+						"Key": {
+							"id": {
+								"N": "1"
+							}
+						},
+						"TableName": "User",
+						"ConsistentRead": false
+					});
+				});
+
+				it("Should send consistent (true) to getItem", async () => {
+					getItemFunction = () => Promise.resolve({"Item": {"id": {"N": "1"}, "name": {"S": "Charlie"}}});
+					await callType.func(User).bind(User)(1, {"consistent": true});
+					expect(getItemParams).to.be.an("object");
+					expect(getItemParams).to.eql({
+						"Key": {
+							"id": {
+								"N": "1"
+							}
+						},
+						"TableName": "User",
+						"ConsistentRead": true
+					});
+				});
+
+				it("Should get consistent (false) back in request", async () => {
+					const result = await callType.func(User).bind(User)(1, {"return": "request", "consistent": true});
+					expect(getItemParams).to.not.exist;
+					expect(result).to.eql({
+						"Key": {"id": {"N": "1"}},
+						"TableName": "User",
+						"ConsistentRead": true
+					});
+				});
+
+				it("Should get consistent (true) back in request", async () => {
+					const result = await callType.func(User).bind(User)(1, {"return": "request", "consistent": false});
+					expect(getItemParams).to.not.exist;
+					expect(result).to.eql({
+						"Key": {"id": {"N": "1"}},
+						"TableName": "User",
+						"ConsistentRead": false
+					});
+				});
+
 				it("Should send correct params to getItem if we pass in an object", async () => {
 					getItemFunction = () => Promise.resolve({"Item": {"id": {"N": "1"}, "name": {"S": "Charlie"}}});
 					await callType.func(User).bind(User)({"id": 1});
@@ -1102,7 +1152,10 @@ describe("Model", () => {
 							}
 						},
 						"TableName": "User",
-						"ProjectionExpression": "id"
+						"ProjectionExpression": "#a0",
+						"ExpressionAttributeNames": {
+							"#a0": "id"
+						}
 					});
 				});
 
@@ -1117,7 +1170,11 @@ describe("Model", () => {
 							}
 						},
 						"TableName": "User",
-						"ProjectionExpression": "id, name"
+						"ProjectionExpression": "#a0, #a1",
+						"ExpressionAttributeNames": {
+							"#a0": "id",
+							"#a1": "name"
+						}
 					});
 				});
 
@@ -3670,6 +3727,24 @@ describe("Model", () => {
 					});
 				});
 
+				it("Should successfully add a condition if a condition is passed in", async () => {
+					const condition = new dynamoose.Condition().filter("id").exists();
+					deleteItemFunction = () => Promise.resolve();
+					await callType.func(User).bind(User)({"id": 1}, {"condition": condition});
+					expect(deleteItemParams).to.be.an("object");
+					expect(deleteItemParams).to.eql({
+						"Key": {
+							"id": {
+								"N": "1"
+							}
+						},
+						"TableName": "User",
+						"ConditionExpression": "attribute_exists (#a0)",
+						"ExpressionAttributeNames": {
+							"#a0": "id"
+						}
+					});
+				});
 
 				it("Should return request if return request setting is set", async () => {
 					const result = await callType.func(User).bind(User)(1, {"return": "request"});
@@ -3984,6 +4059,16 @@ describe("Model", () => {
 				console.warn = oldWarn;
 
 				expect(result).to.eql("Dynamoose Warning: Passing callback function into transaction method not allowed. Removing callback function from list of arguments.");
+			});
+
+			it("Should keep range keys with 0 value", async () => {
+				User = dynamoose.model("User", {"id": String, "order": {"type": Number, "rangeKey": true}});
+				expect(await User.transaction.delete({"id": "foo", "order": 0})).to.eql({
+					"Delete": {
+						"Key": {"id": {"S": "foo"}, "order": {"N": "0"}},
+						"TableName": "User"
+					}
+				});
 			});
 		});
 
